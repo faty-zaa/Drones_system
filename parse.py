@@ -1,5 +1,7 @@
-from typing import List, Dict, Union, Tuple
+from typing import List, Dict, Union, Tuple, Any
 from collections import Counter
+from zone import Zone
+from connection import Connection
 
 
 class ParsingError(Exception):
@@ -11,8 +13,8 @@ class GlobalValidation:
     """Class of parsing methods"""
 
     def __init__(self, lines: List):
-        self.lines = lines
-        self.config = self.check_keys()
+        self.lines: List[str] = lines
+        self.config: Dict[str, Any] = self.check_keys()
 
     def check_first_line(self) -> bool:
         """validation that the first line containe nb_drones"""
@@ -23,13 +25,17 @@ class GlobalValidation:
             if not line or line.startswith("#"):
                 continue
             if not mp:
-                lst = line.split(":", 1)
+                try:
+                    lst = line.split(":", 1)
+                    key = lst[0].strip()
+                    value = lst[1].strip()
+                     # must raise key value error
+                except Exception as e:
+                    raise ParsingError("Error: line must containe key:value")
                 if "nb_drones" not in lst:
                     raise ParsingError(
                         "Error: 1st line must containe number of drones")
-                key = lst[0].strip()
-                value = lst[1].strip()
-                val = 0
+                val: int = 0
                 if key != "nb_drones" or not value:
                     raise ParsingError(
                         "Error: 1st line must containe number of drones")
@@ -45,87 +51,105 @@ class GlobalValidation:
                 continue
         return True
 
-    def check_keys(self) -> Dict[str, str | list[str]]:
+    def check_keys(self) -> Dict[str, List[str]]:
         """check if there is dupliucated variables"""
         self.check_first_line()
-        data: Dict[str, Union[str, List[str]]] = {}
-        lst_hub = []
-        lst_cnx = []
-        lst_drone = []
-        lst_start = []
-        lst_end = []
+        data: Dict[str, List[str]] = {}
+        lst_hub: List[str] = []
+        lst_cnx: List[str] = []
+        lst_drone: List[str] = []
+        lst_start: List[str] = []
+        lst_end: List[str] = []
         for line in self.lines:
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            lst = line.split(":")
+            lst: List[str] = line.split(":", 1)
             if len(lst) != 2 or lst[1] == '':
                 raise ParsingError(
                     f"Error: ({line}) must respect key=value format")
-            if lst[0].strip() == "hub":
-                lst_hub.append(lst[1].strip())
-            elif lst[0].strip() == "connection":
-                lst_cnx.append(lst[1].strip())
-            elif lst[0].strip() == "nb_drones":
-                lst_drone.append(lst[1].strip())
-            elif lst[0].strip() == "start_hub":
-                lst_start.append(lst[1].strip())
-            elif lst[0].strip() == "end_hub":
-                lst_end.append(lst[1].strip())
+            key: str = lst[0].strip()
+            value: str = lst[1].strip()
+
+            if key == "hub":
+                lst_hub.append(value)
+
+            elif key == "connection":
+                lst_cnx.append(value)
+
+            elif key == "nb_drones":
+                lst_drone.append(value)
+
+            elif key == "start_hub":
+                lst_start.append(value)
+
+            elif key == "end_hub":
+                lst_end.append(value)
+
             else:
-                raise ParsingError(f"Error: Invalid key ({lst[0]})")
+                raise ParsingError(f"Error: Invalid key ({key})")
+
         data["hub"] = lst_hub
         data["connection"] = lst_cnx
         data["nb_drones"] = lst_drone
         data["end_hub"] = lst_end
         data["start_hub"] = lst_start
+
         return data
 
     def check_duplicates(self) -> None:
-        data = self.config
+        data: Dict[str, list[str]] = self.config
         """Check if the keys that must be one per file are duplicated"""
-        dct = {
+        dct: Dict[str, int] = {
             "hub": 0, "connection": 0, "nb_drones": 0,
             "end_hub": 0, "start_hub": 0
             }
         for i in data:
             dct[i] = len(data[i])
         lst = ['nb_drones', 'end_hub', 'start_hub']
-        for i in dct:
-            if (i == 'connection' or i == 'hub') and dct[i] < 1:
-                raise ParsingError(f"Error: {i} must be defined in the file")
-            if i in lst and dct[i] != 1:
-                raise ParsingError(f"Error: {i} must be defined once per file")
+        for key in dct:
+            if (key == 'connection' or key == 'hub') and dct[key] < 1:
+                raise ParsingError(f"Error: {key} must be defined in the file")
+
+            if key in lst and dct[key] != 1:
+                raise ParsingError(f"Error: {key} must be defined once per file")
 
     def add_defaults(self, i: str, default: str) -> str:
         if '#' in i:
             i = i.split('#', 1)[0].rstrip()
         if '[' not in i and ']' not in i:
             i = i + " " + default
+
         elif i.count('[') != i.count(']'):
             raise ParsingError(f"Error: invalid data format in {i}")
+
         elif i.count('[') != 1:
             raise ParsingError(f"Error: invalid data format in {i}")
+
         else:
-            v1 = i.find('[')
-            v2 = i.find(']')
+            v1: int = i.find('[')
+            v2: int = i.find(']')
+
             if v1 > 0 and i[v1 - 1] != " " and i[v1 - 1] != '#':
                 raise ParsingError(f"Error: Invalid metadata format in {i}")
-            if i[v1+1:v2].strip() == '':
+
+            if i[v1 + 1:v2].strip() == '':
                 i = i[:v1] + default
+
         i = ' '.join(i.split())
         return i
 
     def data_format(self, default: str, new_lst: List[str]) -> List[List[str]]:
-        lst = []
+        lst: List[List[str]] = []
         for i in new_lst:
             i = self.add_defaults(i, default)
             """
                 removing extra whitespace and keeping
                 single space between words"""
-            new = ""
-            names = []
-            j = 0
+            new: str = ""
+            names: List[str] = []
+
+            j: int = 0
             """check data inside []"""
             while j < len(i):
                 if i[j] == "[":
@@ -158,15 +182,15 @@ class GlobalValidation:
 
     def zone_data_check(self) -> Tuple[list[list[str]], list[str]]:
         """check zones unique names """
-        data = self.config
-        lst1 = ['end_hub', 'start_hub', 'hub']
-        lst_data = [data[i] for i in data if i in lst1]
-        new_lst = [i for j in lst_data for i in j]
+        data: Dict[str, List[str]] = self.config
+        lst1: List[str] = ['end_hub', 'start_hub', 'hub']
+        lst_data: List[List[str]] = [data[i] for i in data if i in lst1]
+        new_lst: List[str] = [i for j in lst_data for i in j]
         """add default values"""
-        default = "[zone=normal color=none max_drones=1]"
+        default: str = "[zone=normal color=none max_drones=1]"
         """check data format []"""
-        lst = self.data_format(default, new_lst)
-        names = []
+        lst: List[List[str]] = self.data_format(default, new_lst)
+        names: List[str] = []
         for idx, i in enumerate(lst):
             for j in i:
                 if '#' in j:
@@ -190,10 +214,10 @@ class GlobalValidation:
                 raise ParsingError(f"Error: Found duplicated hub: {hub}")
         return lst, names
     
-    def meta_data_check(self) -> Dict:
+    def meta_data_check(self) -> Dict[str, Any]:
         """validating hubs meta data"""
         data = self.zone_data_check()
-        dct: Dict[str, List[Union[str, Tuple[int, int]]]] = {}
+        dct: Dict[str, List[Any]] = {}
         for i in data[0]:
             try:
                 int(i[1])
@@ -207,22 +231,22 @@ class GlobalValidation:
             coords = (int(i[1]), int(i[2]))
             metadata = [x for x in i[3].split(" ") if x != ""]
 
-            entry: List[Union[Tuple[int, int], str]] = [coords] + metadata
+            entry: List[Any] = [coords] + metadata
             dct[i[0]] = entry
         default_meta = {
             "zone": "normal",
             "color": "none",
             "max_drones": "1"
         }
-        zval = ["normal", "blocked", "restricted", "priority"]
+        zval: List[str] = ["normal", "blocked", "restricted", "priority"]
         for h in dct:
-            new_dct = {}
+            new_dct: Dict[str, str] = {}
             for j in range(len(dct[h])):
                 if j < 1:
                     continue
                 try:
-                    lst = dct[h][j].split("=")
-                    key, value = lst
+                    lest: List[str] = dct[h][j].split("=")
+                    key, value = lest
                 except Exception:
                     raise ParsingError(
                         f"metadata in {h} must follow the "
@@ -255,10 +279,10 @@ class GlobalValidation:
                         f"Duplicate metadata key ({key}) in {h}")
                 new_dct[key] = value
             dct[h] = dct[h][:2]
-            merged = default_meta.copy()
+            merged: Dict[str, str] = default_meta.copy()
             merged.update(new_dct)
             dct[h][1] = merged
-        lst = []
+        lst: List[Any] = []
         for i in  dct.values():
             lst.append(i[0])
         count = Counter(lst)
@@ -267,99 +291,124 @@ class GlobalValidation:
                 raise ParsingError(f"Error: Duplicated hub position -> {j}")
         return dct
 
-    def connection_check(self) -> Dict:
-        self.check_first_line()
-        self.check_duplicates()
-        hubs = self.meta_data_check()
-        data = self.config
-        nlst = data["connection"]
-        for i in nlst:
-            if '#' in i:
-                nlst[nlst.index(i)] = i.split("#")[0]
-        lst = self.data_format("max_link_capacity=1", nlst)
-        for i in lst:
-            if len(i) != 2:
-                raise ParsingError(
-                    "Error: invalid connection format:"
-                    f"<name1>-<name2> [metadata] in ->  {i[0]}")
-        dct = {}
-        _, h_name = self.zone_data_check()
-        for x in lst:
-            conn_name = x[0]
-            metadata = x[1]
-            if '=' not in metadata:
-                raise ParsingError(f"Invalid metadata format: {metadata}")
-            key, _ = metadata.split('=', 1)
+    # def connection_check(self) -> Dict:
+    #     self.check_first_line()
+    #     self.check_duplicates()
+    #     hubs = self.meta_data_check()
+    #     data = self.config
+    #     nlst = data["connection"]
+    #     for i in nlst:
+    #         if '#' in i:
+    #             nlst[nlst.index(i)] = i.split("#")[0]
+    #     lst = self.data_format("max_link_capacity=1", nlst)
+    #     for i in lst:
+    #         if len(i) != 2:
+    #             raise ParsingError(
+    #                 "Error: invalid connection format:"
+    #                 f"<name1>-<name2> [metadata] in ->  {i[0]}")
+    #     dct = {}
+    #     _, h_name = self.zone_data_check()
+    #     for x in lst:
+    #         conn_name = x[0]
+    #         metadata = x[1]
+    #         if '=' not in metadata:
+    #             raise ParsingError(f"Invalid metadata format: {metadata}")
+    #         key, _ = metadata.split('=', 1)
 
-            if key != "max_link_capacity":
-                raise ParsingError(f"Error: Invalid metadata in ({x[0]})")
-            dct[conn_name] = metadata
+    #         if key != "max_link_capacity":
+    #             raise ParsingError(f"Error: Invalid metadata in ({x[0]})")
+    #         dct[conn_name] = metadata
 
-        connect = dct.keys()
-        lst = []
-        for i in connect:
-            if len(i.split("-")) != 2:
-                raise ParsingError(f"Error: invalid connection: {i}")
-            elif len(i.split("-")) == 2:
-                lst.append(i.split("-"))
-        hubs = self.meta_data_check()
-        start = self.config["start_hub"][0].strip().split()[0]
-        end = self.config["end_hub"][0].strip().split()[0]
-        s = 0
-        e = 0
-        for i in lst:
-            for j in i:
-                if j not in h_name:
-                    raise ParsingError(
-                            f"Error: connection name must exist"
-                            f" in hubes names ({j})")
-                elif j == start:
-                    s += 1
-                    if s != 1:
-                        raise ParsingError(
-                            "Error: start point can't be "
-                            "connected more then once")
-                elif j == end:
-                    e += 1
-                    if e != 1:
-                        raise ParsingError(
-                            "Error: end point can't be connected"
-                            " more then once")
-        i = 0
-        while i < len(lst):
-            j = i + 1
-            if lst[i][0] == lst[i][1]:
-                raise ParsingError(
-                    f"Error: connection names must be different {lst[i]}")
-            while j < len(lst):
-                if Counter(lst[i]) == Counter(lst[j]):
-                    raise ParsingError(
-                        f"Error: Duplicated connection -> {lst[i]}")
-                j += 1
-            i += 1
-        dct = {
-            tuple(k.split('-')): v
-            for k, v in dct.items()
-        }
-        for value in dct.values():
-            try:
-                key, val = value.split("=")
-            except Exception:
-                raise ParsingError(
-                    f"Error: Invalid data format in {value}"
-                    f", it must be max_link_capacity=<number>")
-            if key != "max_link_capacity":
-                raise ParsingError(f"Error: Invalid key in {key}")
-            if not val:
-                raise ParsingError(
-                    f"Error: Invalid data format in {value}"
-                    f", it must be max_link_capacity=<number>")
-            if not val.isdigit():
-                raise ParsingError(
-                    f"Error: Capacity must be a positive number in ({val})")
-            elif val.isdigit() and int(val) < 1:
-                raise ParsingError(
-                    f"Error: Capacity must be > than 0 in ({val})")
-        for k, v in dct.items():
-            dct[k] = int(v.split("=")[1])
-        return hubs, dct
+    #     connect = dct.keys()
+    #     lst = []
+    #     for i in connect:
+    #         if len(i.split("-")) != 2:
+    #             raise ParsingError(f"Error: invalid connection: {i}")
+    #         elif len(i.split("-")) == 2:
+    #             lst.append(i.split("-"))
+    #     hubs = self.meta_data_check()
+    #     start = self.config["start_hub"][0].strip().split()[0]
+    #     end = self.config["end_hub"][0].strip().split()[0]
+    #     s = 0
+    #     e = 0
+    #     for i in lst:
+    #         for j in i:
+    #             if j not in h_name:
+    #                 raise ParsingError(
+    #                     f"Error: connection name must exist"
+    #                     f" in hub names ({j})")
+    #             elif j == start:
+    #                 s += 1
+    #             elif j == end:
+    #                 e += 1
+    #     if s < 1:
+    #         raise ParsingError(
+    #             "Error: start point must have at least one connection")
+    #     if e < 1:
+    #         raise ParsingError(
+    #             "Error: end point must have at least one connection")
+    #     i = 0
+    #     while i < len(lst):
+    #         j = i + 1
+    #         if lst[i][0] == lst[i][1]:
+    #             raise ParsingError(
+    #                 f"Error: connection names must be different {lst[i]}")
+    #         while j < len(lst):
+    #             if Counter(lst[i]) == Counter(lst[j]):
+    #                 raise ParsingError(
+    #                     f"Error: Duplicated connection -> {lst[i]}")
+    #             j += 1
+    #         i += 1
+    #     dct = {
+    #         tuple(k.split('-')): v
+    #         for k, v in dct.items()
+    #     }
+    #     for value in dct.values():
+    #         try:
+    #             key, val = value.split("=")
+    #         except Exception:
+    #             raise ParsingError(
+    #                 f"Error: Invalid data format in {value}"
+    #                 f", it must be max_link_capacity=<number>")
+    #         if key != "max_link_capacity":
+    #             raise ParsingError(f"Error: Invalid key in {key}")
+    #         if not val:
+    #             raise ParsingError(
+    #                 f"Error: Invalid data format in {value}"
+    #                 f", it must be max_link_capacity=<number>")
+    #         if not val.isdigit():
+    #             raise ParsingError(
+    #                 f"Error: Capacity must be a positive number in ({val})")
+    #         elif val.isdigit() and int(val) < 1:
+    #             raise ParsingError(
+    #                 f"Error: Capacity must be > than 0 in ({val})")
+    #     for k, v in dct.items():
+    #         dct[k] = int(v.split("=")[1])
+    #     return hubs, dct
+  
+    # def creat_zone_obj(self):
+    #     hubs, _ = self.connection_check()
+    #     start = self.config["start_hub"][0].strip().split()[0]
+    #     end = self.config["end_hub"][0].strip().split()[0]
+    #     zones = []
+    #     max = []
+    #     for name, value in hubs.items():
+    #         zone = Zone(name, value)
+    #         if name == start:
+    #             zone.place = "start"
+    #             zone.max_drones = int(self.config['nb_drones'][0])
+    #         elif name == end:
+    #             zone.place = "end"
+    #             zone.max_drones = int(self.config['nb_drones'][0])
+    #         else:
+    #             zone.place = "hub"
+    #         zones.append(zone)
+
+    #     return zones
+
+    # def creat_conx_obj(self):
+    #     _, con = self.connection_check()
+    #     conx_lst = []
+    #     for i, j in con.items():
+    #         conx_lst.append(Connection(i, j))
+    #     return(conx_lst)

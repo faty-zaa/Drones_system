@@ -1,7 +1,7 @@
 PY = python3
 PIP = pip
 PDB = pdb
-FILE = graph.py
+FILE = fly.py
 
 install:
 	@$(PIP) install -r requirements.txt || true
